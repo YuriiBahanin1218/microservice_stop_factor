@@ -1,0 +1,100 @@
+
+image: docker:19.03.1
+services:
+  - docker:19.03.1-dind
+
+stages:
+#  - npm
+  - build_caddy
+  - build_mssff
+  - deploy
+
+
+###############################################################################
+.build: &build_job
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - case "$CI_COMMIT_BRANCH" in (*[!a-zA-Z0-9_]*) echo "### ERR! branch name '$CI_COMMIT_BRANCH' contains invalid characters. Use 'a-z A-Z 0-9 _' only"; exit 1 ;; esac;
+
+  script:
+    - docker pull $CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$IMAGE_NAME-latest || true
+    - docker build
+      --file Dockerfile.${IMAGE_NAME}
+      --cache-from $CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$IMAGE_NAME-latest
+      --build-arg CI_REGISTRY_IMAGE="${CI_REGISTRY_IMAGE}"
+      --build-arg CI_COMMIT_BRANCH="${CI_COMMIT_BRANCH}"
+      --build-arg CI_COMMIT_SHORT_SHA="${CI_COMMIT_SHORT_SHA}"
+      --build-arg IMAGE_NAME="${IMAGE_NAME}"
+      --tag $CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$IMAGE_NAME-$CI_COMMIT_SHORT_SHA
+      --tag $CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$IMAGE_NAME-latest .
+    - docker push $CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$IMAGE_NAME-$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:$IMAGE_NAME-latest
+
+
+###
+build:caddy:
+  <<: *build_job
+  stage: build_caddy
+  variables:
+    IMAGE_NAME: caddy
+  only:
+    - main
+  tags:
+    - sandbox
+
+###
+build:mssff:
+  <<: *build_job
+  stage: build_mssff
+  variables:
+    IMAGE_NAME: mssff
+  only:
+    - main
+  tags:
+    - sandbox
+
+###############################################################################
+.deploy: &deploy_job
+  image: docker/compose
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - OVER=docker-compose.${CI_COMMIT_BRANCH}.yml;
+      if [ -f "$OVER" ]; then
+        echo "### INFO use override file '$OVER'";
+        cp $OVER docker-compose.override.yml;
+      else
+        echo "### INFO a override file can not found";
+      fi;
+    - eval "DOTENV=\${DOTENV_$CI_COMMIT_BRANCH:-'none'}";
+      if [ "$DOTENV" != "none" ]; then
+        echo "### INFO use var 'DOTENV_$CI_COMMIT_BRANCH'";
+      else
+        echo "### WARN var 'DOTENV_$CI_COMMIT_BRANCH' is unset";
+        DOTENV=${DOTENV_DEFAULT:-'none'};
+        if [ "$DOTENV" != "none" ]; then
+          echo "### INFO use var 'DOTENV_DEFAULT'";
+        else
+          echo "### ERR! var 'DOTENV_DEFAULT' is unset";
+          DOTENV='.none'
+          echo '###' > ${DOTENV};
+        fi;
+      fi;
+    - cp ${DOTENV} .env
+
+  script:
+    - docker pull $CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:mssff-$CI_COMMIT_SHORT_SHA || true
+    - docker pull $CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:caddy-$CI_COMMIT_SHORT_SHA || true
+    - docker-compose down
+    - docker-compose up -d --force-recreate
+  dependencies:
+    - build:mssff
+
+deploy:main:
+  <<: *deploy_job
+  stage: deploy
+#  environment:
+#    name: staging
+  only:
+    - main
+  tags:
+    - mssff_main

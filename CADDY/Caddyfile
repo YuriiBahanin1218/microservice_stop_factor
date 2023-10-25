@@ -1,0 +1,18 @@
+{
+    email smirnov@etf-int.ru
+    auto_https disable_redirects
+}
+
+{$CADDY_SITE_NAME::80} {
+    log {
+        output stdout
+        format console
+#        level  debug
+    }
+
+     route * {
+        file_server /* {
+            root /srv/mssff
+        }
+    }
+}

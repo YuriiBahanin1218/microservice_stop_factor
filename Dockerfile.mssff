@@ -1,0 +1,42 @@
+ARG CI_REGISTRY_IMAGE
+ARG CI_COMMIT_BRANCH
+ARG CI_COMMIT_SHORT_SHA
+ARG IMAGE_NAME
+
+FROM node:16.17.0 AS nodeBuilder
+
+WORKDIR /APP
+COPY ./APP .
+RUN npm ci
+RUN npm run build
+
+
+
+################################
+#FROM debian:bullseye-slim
+FROM ${CI_REGISTRY_IMAGE}/${CI_COMMIT_BRANCH}:caddy-${CI_COMMIT_SHORT_SHA}
+
+#RUN apt-get update &&  apt-get -y install iputils-ping net-tools dnsutils gnupg curl wget netcat mc nano jq sudo debian-keyring debian-archive-keyring apt-transport-https
+#RUN curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-testing.list
+#RUN curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+#RUN chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+#RUN apt-get update -y && apt-get install caddy -y
+#COPY CADDY/Caddyfile /etc/caddy/Caddyfile
+
+RUN mkdir /srv/mssff
+WORKDIR  /srv/mssff
+#COPY APP/. /srv/mssff
+
+
+#COPY --from=nodeBuilder /APP/dist /srv/mssff/dist
+COPY --from=nodeBuilder /APP/dist /srv/mssff
+
+
+EXPOSE 80
+EXPOSE 443
+EXPOSE 443/udp
+#EXPOSE 2019
+
+WORKDIR  /srv/mssff
+
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

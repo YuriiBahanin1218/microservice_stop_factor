@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+
+  mssff:
+#    container_name: mssff
+    container_name: ${CI_PROJECT_NAME}_${CI_COMMIT_BRANCH}__mssff
+    hostname: ${CI_PROJECT_NAME}_${CI_COMMIT_BRANCH}__mssff
+    image: $CI_REGISTRY_IMAGE/$CI_COMMIT_BRANCH:mssff-$CI_COMMIT_SHORT_SHA
+    restart: unless-stopped
+    ports:
+      - '0.0.0.0:80:80'
+      - '0.0.0.0:443:443'
+    environment:
+      - CONTAINER_NAME=${CI_PROJECT_NAME}_${CI_COMMIT_BRANCH}__mssff
+      - SERVICENAME=${CI_COMMIT_BRANCH}_mssff
+      - XDG_CONFIG_HOME=/config
+      - XDG_DATA_HOME=/data
+    env_file:
+      - .env
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - mssff_data:/data
+      - mssff_config:/config
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "100m"
+    networks:
+      - mssff_network
+
+volumes:
+  mssff_data:
+  mssff_config:
+
+networks:
+  mssff_network:
+    name: mssff_${CI_COMMIT_BRANCH}_network
